@@ -68,6 +68,10 @@ qwen-vl-bbox-tool/
 └── .dev.vars           # 本地环境变量 (不提交)
 ```
 
+## 开发说明
+
+本系统由 MiMo v2.5 Pro 配合 Claude Code 以及 oh-my-claudecode (OMC) 开发。
+
 ## License
 
-MIT
+[MIT](LICENSE)
