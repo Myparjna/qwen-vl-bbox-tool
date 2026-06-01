@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/favicon.png">
+<title>Qwen BBox 标注工具</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; min-height: 100vh; }
+
+.header { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header .badge { background: #e8f5e9; color: #2e7d32; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+
+.main { display: flex; gap: 16px; padding: 16px; max-width: 1600px; margin: 0 auto; height: calc(100vh - 52px); }
+
+.left-sidebar { width: 180px; display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; }
+
+.canvas-area { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+
+.upload-zone {
+  border: 2px dashed #ccc; border-radius: 8px; padding: 40px; text-align: center;
+  cursor: pointer; transition: all 0.2s; background: #fff; flex-shrink: 0;
+}
+.upload-zone.hidden { display: none; }
+.upload-zone:hover, .upload-zone.dragover { border-color: #1976d2; background: #e3f2fd; }
+.upload-zone .icon { font-size: 48px; color: #999; margin-bottom: 8px; }
+.upload-zone p { color: #666; font-size: 14px; }
+.upload-zone .hint { font-size: 12px; color: #999; margin-top: 4px; }
+
+.canvas-wrapper {
+  flex: 1; background: #fff; border-radius: 8px; border: 1px solid #e0e0e0;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  position: relative; min-height: 300px;
+}
+.canvas-wrapper canvas { max-width: 100%; max-height: 100%; }
+.canvas-placeholder { color: #999; font-size: 14px; }
+
+.loading-overlay {
+  position: absolute; inset: 0; background: rgba(255,255,255,0.85);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 10; display: none;
+}
+.loading-overlay.show { display: flex; }
+.spinner { width: 36px; height: 36px; border: 3px solid #e0e0e0; border-top-color: #1976d2; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { margin-top: 12px; font-size: 13px; color: #666; }
+
+.sidebar { width: 320px; display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; }
+
+.card { background: #fff; border-radius: 8px; border: 1px solid #e0e0e0; padding: 16px; }
+.card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #555; }
+
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
+.form-group input, .form-group select {
+  width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px;
+  font-size: 13px; outline: none; transition: border-color 0.2s;
+}
+.form-group input:focus, .form-group select:focus { border-color: #1976d2; }
+
+.btn {
+  width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px;
+  font-weight: 500; cursor: pointer; transition: all 0.2s;
+}
+.btn-primary { background: #1976d2; color: #fff; }
+.btn-primary:hover { background: #1565c0; }
+.btn-primary:disabled { background: #bbb; cursor: not-allowed; }
+.btn-secondary { background: #f5f5f5; color: #333; border: 1px solid #ddd; }
+.btn-secondary:hover { background: #eee; }
+
+
+.timing-info { font-size: 12px; color: #666; margin-top: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px; }
+.result-item {
+  display: flex; align-items: center; gap: 8px; padding: 8px;
+  border-bottom: 1px solid #f0f0f0; font-size: 12px; cursor: pointer;
+  transition: background 0.15s;
+}
+.result-item:hover { background: #f5f5f5; }
+.result-item .color-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.result-item .label { flex: 1; font-weight: 500; }
+.result-item .coords { color: #999; font-family: monospace; font-size: 11px; }
+
+.empty-state { text-align: center; padding: 20px; color: #999; font-size: 13px; }
+
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: #333; color: #fff; padding: 10px 20px; border-radius: 6px;
+  font-size: 13px; z-index: 100; opacity: 0; transition: opacity 0.3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+
+@media (max-width: 768px) {
+  .main { flex-direction: column; height: auto; }
+  .sidebar { width: 100%; }
+  .canvas-wrapper { min-height: 250px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Qwen BBox 标注工具</h1>
+  <span class="badge">qwen3.5-flash (35a3b)</span>
+  <span style="margin-left:auto; font-size:11px; color:#999;">made by @以明 20260601</span>
+</div>
+
+<div class="main">
+  <div class="left-sidebar">
+    <div class="card" id="historyCard" style="display:none;">
+      <h3>最近记录</h3>
+      <div id="historyList" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+  </div>
+
+  <div class="canvas-area">
+    <div class="upload-zone" id="uploadZone">
+      <div class="icon">+</div>
+      <p>拖拽图片到此处，或点击上传</p>
+      <div class="hint">支持 PNG / JPG / WebP，建议 2MB 以内</div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none">
+    </div>
+    <div class="canvas-wrapper" id="canvasWrapper">
+      <canvas id="mainCanvas"></canvas>
+      <div class="canvas-placeholder" id="placeholder">上传图片后在这里显示</div>
+      <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loadingText">正在分析...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="card">
+      <h3>检测配置</h3>
+      <div class="form-group">
+        <label>检测目标</label>
+        <input type="text" id="targetInput" placeholder="人、车">
+      </div>
+      <div class="form-group">
+        <label>模型</label>
+        <select id="modelSelect">
+          <option value="qwen3.5-flash" selected>qwen3.5-flash</option>
+          <option value="qwen3.6-plus">qwen3.6-plus</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="detectBtn" disabled>开始检测</button>
+      <button class="btn btn-secondary" id="reuploadBtn" style="margin-top:8px; display:none;">重新上传</button>
+    </div>
+
+    <div class="card" style="flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden;">
+      <h3>检测结果 <span id="resultCount" style="font-weight:400; color:#999;"></span></h3>
+      <div class="results-list" id="resultsList" style="flex:1; overflow-y:auto;">
+        <div class="empty-state">等待检测...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <button class="btn btn-secondary" id="exportBtn" disabled>导出标注图片</button>
+    </div>
+  </div>
+</div>
+
+<!-- 预览弹窗 -->
+<div id="previewModal" style="position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none; align-items:center; justify-content:center; z-index:150; cursor:pointer;">
+  <img id="previewImg" style="max-width:90vw; max-height:90vh; border-radius:8px;">
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 密码验证弹窗 -->
+<div id="authModal" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:200;">
+  <div style="background:#fff; padding:32px; border-radius:12px; text-align:center; min-width:300px;">
+    <h2 style="margin-bottom:16px; font-size:18px;">请输入访问密码</h2>
+    <input type="password" id="authInput" placeholder="公司WiFi密码" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:16px;">
+    <button id="authBtn" style="width:100%; padding:10px; background:#1976d2; color:#fff; border:none; border-radius:6px; font-size:14px; cursor:pointer;">确认</button>
+    <p id="authError" style="color:red; font-size:12px; margin-top:8px; display:none;">密码错误</p>
+  </div>
+</div>
+
+<script>
+const COLORS = ['#FF0000','#22AA22','#0066FF','#FF6600','#CC00CC','#0099AA','#FF3399','#FFCC00','#44BB44','#6633FF','#FF6666','#0099FF'];
+
+const $ = id => document.getElementById(id);
+const canvas = $('mainCanvas');
+const ctx = canvas.getContext('2d');
+const uploadZone = $('uploadZone');
+const fileInput = $('fileInput');
+const targetInput = $('targetInput');
+const modelSelect = $('modelSelect');
+const detectBtn = $('detectBtn');
+const exportBtn = $('exportBtn');
+const reuploadBtn = $('reuploadBtn');
+const resultsList = $('resultsList');
+const resultCount = $('resultCount');
+const loadingOverlay = $('loadingOverlay');
+const loadingText = $('loadingText');
+const placeholder = $('placeholder');
+const authModal = $('authModal');
+const authInput = $('authInput');
+const authBtn = $('authBtn');
+const authError = $('authError');
+const modelBadge = document.querySelector('.badge');
+
+// 模型信息映射
+const MODEL_INFO = {
+  'qwen3.5-flash': 'qwen3.5-flash (35a3b)',
+  'qwen3.6-plus': 'qwen3.6-plus (397b-a17b)'
+};
+
+// 模型选择变化时更新 badge
+modelSelect.addEventListener('change', () => {
+  modelBadge.textContent = MODEL_INFO[modelSelect.value] || modelSelect.value;
+});
+
+// 密码验证
+const AUTH_PASSWORD = 'REDACTED';
+function checkAuth() {
+  if (localStorage.getItem('bbox_auth') === AUTH_PASSWORD) {
+    authModal.style.display = 'none';
+    return;
+  }
+  authModal.style.display = 'flex';
+  authInput.focus();
+}
+
+authBtn.addEventListener('click', () => {
+  if (authInput.value === AUTH_PASSWORD) {
+    localStorage.setItem('bbox_auth', AUTH_PASSWORD);
+    authModal.style.display = 'none';
+  } else {
+    authError.style.display = 'block';
+    authInput.value = '';
+    authInput.focus();
+  }
+});
+
+authInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') authBtn.click();
+});
+
+checkAuth();
+
+let originalImage = null;
+let currentBboxes = [];
+let displayScale = 1;
+let abortController = null;
+
+// 历史记录管理
+const HISTORY_KEY = 'bbox_history';
+const MAX_HISTORY = 6;
+
+function getHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+  } catch { return []; }
+}
+
+function saveHistory(imageDataUrl, target, bboxes) {
+  const history = getHistory();
+  const record = {
+    id: Date.now(),
+    thumbnail: imageDataUrl,
+    target: target,
+    bboxes: bboxes,
+    timestamp: new Date().toISOString()
+  };
+  history.unshift(record);
+  if (history.length > MAX_HISTORY) history.pop();
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  renderHistory();
+}
+
+function renderHistory() {
+  const history = getHistory();
+  const historyCard = $('historyCard');
+  const historyList = $('historyList');
+
+  if (history.length === 0) {
+    historyCard.style.display = 'none';
+    return;
+  }
+
+  historyCard.style.display = '';
+  historyList.innerHTML = history.map((record, i) => `
+    <div style="position:relative; cursor:pointer; overflow:hidden; border-radius:4px; border:1px solid #e0e0e0;" data-idx="${i}">
+      <img src="${record.thumbnail}" style="width:100%; height:80px; object-fit:cover;">
+      <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:2px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+        ${record.target}
+      </div>
+    </div>
+  `).join('');
+
+  historyList.querySelectorAll('[data-idx]').forEach(el => {
+    el.addEventListener('click', () => {
+      const record = history[parseInt(el.dataset.idx)];
+      loadFromHistory(record);
+    });
+  });
+}
+
+function loadFromHistory(record) {
+  const img = new Image();
+  img.onload = () => {
+    originalImage = img;
+    currentBboxes = record.bboxes || [];
+    placeholder.style.display = 'none';
+    uploadZone.classList.add('hidden');
+    reuploadBtn.style.display = '';
+    detectBtn.disabled = false;
+    exportBtn.disabled = currentBboxes.length === 0;
+    targetInput.value = record.target;
+    renderResultList();
+    renderCanvas();
+  };
+  img.src = record.thumbnail;
+}
+
+// 预览功能
+const previewModal = $('previewModal');
+const previewImg = $('previewImg');
+
+previewModal.addEventListener('click', () => {
+  previewModal.style.display = 'none';
+});
+
+function showPreview(dataUrl) {
+  previewImg.src = dataUrl;
+  previewModal.style.display = 'flex';
+}
+
+// 初始化历史记录
+renderHistory();
+
+// 图片上传
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadImage(e.target.files[0]); });
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadImage(file);
+});
+
+document.addEventListener('paste', e => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) { loadImage(item.getAsFile()); break; }
+  }
+});
+
+function loadImage(file) {
+  if (file.size > 10 * 1024 * 1024) { showToast('图片过大，请选择 10MB 以内的图片'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      originalImage = img;
+      currentBboxes = [];
+      placeholder.style.display = 'none';
+      uploadZone.classList.add('hidden');
+      reuploadBtn.style.display = '';
+      detectBtn.disabled = false;
+      exportBtn.disabled = true;
+      resultsList.innerHTML = '<div class="empty-state">等待检测...</div>';
+      resultCount.textContent = '';
+      renderCanvas();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderCanvas(highlightIdx) {
+  if (!originalImage) return;
+  const wrapper = $('canvasWrapper');
+  const maxW = wrapper.clientWidth - 2;
+  const maxH = wrapper.clientHeight - 2;
+  const ratio = Math.min(maxW / originalImage.width, maxH / originalImage.height, 1);
+  const dw = Math.floor(originalImage.width * ratio);
+  const dh = Math.floor(originalImage.height * ratio);
+
+  canvas.width = dw;
+  canvas.height = dh;
+  displayScale = ratio;
+
+  ctx.drawImage(originalImage, 0, 0, dw, dh);
+
+  currentBboxes.forEach((box, i) => {
+    const color = COLORS[i % COLORS.length];
+    const x = box.bbox_2d[0] * ratio;
+    const y = box.bbox_2d[1] * ratio;
+    const w = (box.bbox_2d[2] - box.bbox_2d[0]) * ratio;
+    const h = (box.bbox_2d[3] - box.bbox_2d[1]) * ratio;
+
+    const isHighlight = i === highlightIdx;
+    ctx.fillStyle = color + (isHighlight ? '44' : '33');
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = isHighlight ? 4 : 3;
+    ctx.strokeRect(x, y, w, h);
+
+    const label = box.label || 'unknown';
+    ctx.font = `bold ${isHighlight ? '14' : '12'}px sans-serif`;
+    const tw = ctx.measureText(label).width + 12;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y - 24, tw, 24);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x + 6, y - 7);
+  });
+}
+
+async function detect() {
+  if (!originalImage) return;
+  const target = targetInput.value.trim() || '人、车';
+
+  // 压缩图片
+  loadingOverlay.classList.add('show');
+  loadingText.textContent = '正在压缩图片...';
+  detectBtn.disabled = true;
+  abortController = new AbortController();
+
+  const tempCanvas = document.createElement('canvas');
+  const maxDim = 1600;
+  const scale = Math.min(maxDim / originalImage.width, maxDim / originalImage.height, 1);
+  tempCanvas.width = Math.floor(originalImage.width * scale);
+  tempCanvas.height = Math.floor(originalImage.height * scale);
+  const tCtx = tempCanvas.getContext('2d');
+  tCtx.drawImage(originalImage, 0, 0, tempCanvas.width, tempCanvas.height);
+  const base64 = tempCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+  loadingText.textContent = '正在调用模型分析...';
+  const startTime = Date.now();
+
+  try {
+    const resp = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image: base64,
+        target: target,
+        model: modelSelect.value,
+        origWidth: originalImage.naturalWidth,
+        origHeight: originalImage.naturalHeight,
+      }),
+      signal: abortController.signal,
+    });
+
+    const data = await resp.json();
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    if (data.error) {
+      showToast('检测失败: ' + data.error);
+      resultsList.innerHTML = `<div class="empty-state">${data.error}</div>`;
+    } else {
+      currentBboxes = data.bboxes || [];
+      renderResultList(elapsed);
+      renderCanvas();
+      exportBtn.disabled = currentBboxes.length === 0;
+      showToast(`检测到 ${currentBboxes.length} 个目标 (${elapsed}秒)`);
+
+      // 保存到历史记录
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = originalImage.width;
+      tempCanvas.height = originalImage.height;
+      const tCtx2 = tempCanvas.getContext('2d');
+      tCtx2.drawImage(originalImage, 0, 0);
+      currentBboxes.forEach((box, i) => {
+        const color = COLORS[i % COLORS.length];
+        const [x1, y1, x2, y2] = box.bbox_2d;
+        tCtx2.fillStyle = color + '44';
+        tCtx2.fillRect(x1, y1, x2 - x1, y2 - y1);
+        tCtx2.strokeStyle = color;
+        tCtx2.lineWidth = 4;
+        tCtx2.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        const label = box.label || 'unknown';
+        tCtx2.font = 'bold 18px sans-serif';
+        const tw = tCtx2.measureText(label).width + 12;
+        tCtx2.fillStyle = color;
+        tCtx2.fillRect(x1, y1 - 28, tw, 28);
+        tCtx2.fillStyle = '#fff';
+        tCtx2.fillText(label, x1 + 6, y1 - 8);
+      });
+      saveHistory(tempCanvas.toDataURL('image/jpeg', 0.7), target, currentBboxes);
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      showToast('请求失败: ' + e.message);
+    }
+  } finally {
+    loadingOverlay.classList.remove('show');
+    detectBtn.disabled = false;
+    abortController = null;
+  }
+}
+
+function renderResultList(elapsed) {
+  resultCount.textContent = `(${currentBboxes.length})`;
+  if (currentBboxes.length === 0) {
+    resultsList.innerHTML = '<div class="empty-state">未检测到目标</div>';
+    return;
+  }
+  resultsList.innerHTML = currentBboxes.map((box, i) => {
+    const color = COLORS[i % COLORS.length];
+    const b = box.bbox_2d;
+    return `<div class="result-item" data-idx="${i}">
+      <div class="color-dot" style="background:${color}"></div>
+      <div class="label">${box.label || 'unknown'}</div>
+      <div class="coords">[${b[0]},${b[1]},${b[2]},${b[3]}]</div>
+    </div>`;
+  }).join('');
+
+  resultsList.querySelectorAll('.result-item').forEach(el => {
+    el.addEventListener('mouseenter', () => renderCanvas(parseInt(el.dataset.idx)));
+    el.addEventListener('mouseleave', () => renderCanvas());
+  });
+
+  // 添加耗时信息和预览下载按钮
+  const actionsHtml = `
+    <div class="timing-info">百炼识别耗时: ${elapsed || '-'}秒</div>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button class="btn btn-secondary" style="flex:1;" onclick="previewResult()">预览</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="exportImage()">下载</button>
+    </div>
+  `;
+  resultsList.insertAdjacentHTML('beforeend', actionsHtml);
+}
+
+function exportImage() {
+  if (!originalImage || currentBboxes.length === 0) return;
+  const expCanvas = document.createElement('canvas');
+  expCanvas.width = originalImage.width;
+  expCanvas.height = originalImage.height;
+  const eCtx = expCanvas.getContext('2d');
+  eCtx.drawImage(originalImage, 0, 0);
+
+  currentBboxes.forEach((box, i) => {
+    const color = COLORS[i % COLORS.length];
+    const [x1, y1, x2, y2] = box.bbox_2d;
+    eCtx.fillStyle = color + '44';
+    eCtx.fillRect(x1, y1, x2 - x1, y2 - y1);
+    eCtx.strokeStyle = color;
+    eCtx.lineWidth = 4;
+    eCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+    const label = box.label || 'unknown';
+    eCtx.font = 'bold 18px sans-serif';
+    const tw = eCtx.measureText(label).width + 12;
+    eCtx.fillStyle = color;
+    eCtx.fillRect(x1, y1 - 28, tw, 28);
+    eCtx.fillStyle = '#fff';
+    eCtx.fillText(label, x1 + 6, y1 - 8);
+  });
+
+  const link = document.createElement('a');
+  const now = new Date();
+  const timestamp = now.getFullYear() +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    String(now.getDate()).padStart(2, '0') + '-' +
+    String(now.getHours()).padStart(2, '0') +
+    String(now.getMinutes()).padStart(2, '0') +
+    String(now.getSeconds()).padStart(2, '0');
+  const target = targetInput.value.trim() || '人、车';
+  link.download = `qwen3.5识别${target}效果${timestamp}.png`;
+  link.href = expCanvas.toDataURL('image/png');
+  link.click();
+}
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function previewResult() {
+  if (!originalImage || currentBboxes.length === 0) return;
+  const expCanvas = document.createElement('canvas');
+  expCanvas.width = originalImage.width;
+  expCanvas.height = originalImage.height;
+  const eCtx = expCanvas.getContext('2d');
+  eCtx.drawImage(originalImage, 0, 0);
+
+  currentBboxes.forEach((box, i) => {
+    const color = COLORS[i % COLORS.length];
+    const [x1, y1, x2, y2] = box.bbox_2d;
+    eCtx.fillStyle = color + '44';
+    eCtx.fillRect(x1, y1, x2 - x1, y2 - y1);
+    eCtx.strokeStyle = color;
+    eCtx.lineWidth = 4;
+    eCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    const label = box.label || 'unknown';
+    eCtx.font = 'bold 18px sans-serif';
+    const tw = eCtx.measureText(label).width + 12;
+    eCtx.fillStyle = color;
+    eCtx.fillRect(x1, y1 - 28, tw, 28);
+    eCtx.fillStyle = '#fff';
+    eCtx.fillText(label, x1 + 6, y1 - 8);
+  });
+
+  showPreview(expCanvas.toDataURL('image/png'));
+}
+
+detectBtn.addEventListener('click', detect);
+exportBtn.addEventListener('click', exportImage);
+reuploadBtn.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
+window.addEventListener('resize', () => renderCanvas());
+</script>
+</body>
+</html>

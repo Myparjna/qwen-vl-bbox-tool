@@ -1,0 +1,12 @@
+node_modules/
+.dev.vars
+.wrangler/
+.omc/
+.claude/
+*.log
+ScreenShot/
+TempScr/
+ProjectDoc/
+project-handoff/
+handoff/
+*.zip
