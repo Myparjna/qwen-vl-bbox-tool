@@ -17,7 +17,9 @@
 
 https://qwenvl.pages.dev
 
-访问密码: `REDACTED`
+## 效果预览
+
+![Qwen BBox 标注工具](screenshot.png)
 
 ## 技术栈
 
