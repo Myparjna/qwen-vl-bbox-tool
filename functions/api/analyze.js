@@ -26,7 +26,7 @@ export async function onRequestPost(context) {
     });
   }
 
-  const selectedModel = model || 'qwen3.5-flash';
+  const selectedModel = model || 'qwen3.7-flash';
 
   const prompt = `请检测图中所有"${target}"目标，必须检测全部，不要遗漏任何一个小目标。输出格式为JSON数组：[{"label":"名称","bbox_2d":[x1,y1,x2,y2]}]。坐标为0-999范围的相对坐标，x1,y1为左上角，x2,y2为右下角。如果未检测到任何目标，返回空数组[]。`;
 

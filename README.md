@@ -10,12 +10,17 @@
 - 检测结果列表 + 悬停高亮
 - 预览/下载标注图片
 - 最近 6 次检测记录 (localStorage)
-- 密码访问控制
+- 密码访问控制 (点击检测时触发)
+- 手动输入坐标 (复制提示词到 Qwen 官网，粘贴结果自动绘制)
 - API 响应时间显示
 
 ## 在线体验
 
 https://qwenvl.pages.dev
+
+## 源码仓库
+
+https://github.com/Myparjna/qwen-vl-bbox-tool
 
 ## 效果预览
 
@@ -25,7 +30,7 @@ https://qwenvl.pages.dev
 
 - **前端**: HTML/CSS/JavaScript (单文件)
 - **后端**: Cloudflare Pages Functions
-- **AI模型**: 阿里云百炼 Qwen VL (qwen3.5-flash / qwen3.6-plus)
+- **AI模型**: 阿里云百炼 Qwen VL (qwen3.7-flash / qwen3.7-plus)
 
 ## 本地开发
 
