@@ -520,6 +520,15 @@ async function detect() {
     const data = await resp.json();
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
+    // token 过期：清除旧 token，弹密码框重新登录
+    if (resp.status === 401) {
+      localStorage.removeItem(AUTH_KEY);
+      pendingDetect = true;
+      showAuthModal();
+      showToast('登录已过期，请重新输入密码');
+      return;
+    }
+
     if (data.error) {
       showToast('检测失败: ' + data.error);
       resultsList.innerHTML = `<div class="empty-state">${data.error}</div>`;

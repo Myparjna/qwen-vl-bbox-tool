@@ -3,7 +3,7 @@
 
 import { signToken, resolveSecret, timingSafeEqual } from './_auth.js';
 
-const TOKEN_TTL = 24 * 60 * 60 * 1000; // 24 小时
+const TOKEN_TTL = 93 * 24 * 60 * 60 * 1000; // 93 天，配合前端 localStorage 持久化登录
 
 export async function onRequestPost(context) {
   const { password } = await context.request.json().catch(() => ({}));
