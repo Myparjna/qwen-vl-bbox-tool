@@ -8,7 +8,20 @@ function normalizedToPixel(bbox, origW, origH) {
   ];
 }
 
+import { verifyToken, resolveSecret } from './_auth.js';
+
 export async function onRequestPost(context) {
+  // 鉴权：校验 Authorization: Bearer <token>
+  const authHeader = context.request.headers.get('Authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const authed = await verifyToken(resolveSecret(context.env), token);
+  if (!authed) {
+    return new Response(JSON.stringify({ error: '未授权：请先通过密码验证' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const { image, target, model, origWidth, origHeight } = await context.request.json();
 
   if (!image || !target) {
